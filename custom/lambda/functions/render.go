@@ -27,7 +27,7 @@ func NewFunctionRenderer() render.Renderer {
 			Service:  "lambda",
 			Resource: "functions",
 			Cols: []render.Column{
-				{Name: "NAME", Width: 40, Getter: func(r dao.Resource) string { return r.GetName() }, Priority: 0},
+				{Name: "NAME", Width: 60, Getter: func(r dao.Resource) string { return r.GetName() }, Priority: 0},
 				{Name: "RUNTIME", Width: 15, Getter: getRuntimeDisplay, Priority: 1},
 				{Name: "STATE", Width: 10, Getter: getState, Priority: 2},
 				{Name: "MEMORY", Width: 8, Getter: getMemory, Priority: 3},

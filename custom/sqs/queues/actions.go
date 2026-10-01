@@ -3,15 +3,21 @@ package queues
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 
 	sqsClient "github.com/clawscli/claws/custom/sqs"
 	"github.com/clawscli/claws/internal/action"
 	appaws "github.com/clawscli/claws/internal/aws"
 	"github.com/clawscli/claws/internal/dao"
+	"github.com/clawscli/claws/internal/sanitize"
 )
+
+const moveTaskStatusRunning = "RUNNING"
 
 func init() {
 	// Register actions for SQS queues
@@ -29,6 +35,29 @@ func init() {
 			Type:      action.ActionTypeAPI,
 			Operation: "SendTestMessage",
 			Confirm:   action.ConfirmSimple,
+		},
+		{
+			Name:      "Start Redrive",
+			Shortcut:  "r",
+			Type:      action.ActionTypeAPI,
+			Operation: "StartMessageMoveTask",
+			Confirm:   action.ConfirmSimple,
+			Filter:    isDLQ,
+		},
+		{
+			Name:      "Redrive Status",
+			Shortcut:  "R",
+			Type:      action.ActionTypeAPI,
+			Operation: "ListMessageMoveTasks",
+			Filter:    isDLQ,
+		},
+		{
+			Name:      "Cancel Redrive",
+			Shortcut:  "c",
+			Type:      action.ActionTypeAPI,
+			Operation: "CancelMessageMoveTask",
+			Confirm:   action.ConfirmSimple,
+			Filter:    isDLQ,
 		},
 		{
 			Name:      "Delete",
@@ -52,6 +81,12 @@ func executeQueueAction(ctx context.Context, act action.Action, resource dao.Res
 		return executeSendTestMessage(ctx, resource)
 	case "DeleteQueue":
 		return executeDeleteQueue(ctx, resource)
+	case "StartMessageMoveTask":
+		return executeStartRedrive(ctx, resource)
+	case "ListMessageMoveTasks":
+		return executeRedriveStatus(ctx, resource)
+	case "CancelMessageMoveTask":
+		return executeCancelRedrive(ctx, resource)
 	default:
 		return action.UnknownOperationResult(act.Operation)
 	}
@@ -156,4 +191,144 @@ func executeDeleteQueue(ctx context.Context, resource dao.Resource) action.Actio
 		Success: true,
 		Message: fmt.Sprintf("Deleted queue %s", queueName),
 	}
+}
+
+func isDLQ(resource dao.Resource) bool {
+	queue, ok := resource.(*QueueResource)
+	return ok && queue.IsDLQ
+}
+
+func executeStartRedrive(ctx context.Context, resource dao.Resource) action.ActionResult {
+	queue, ok := resource.(*QueueResource)
+	if !ok {
+		return action.InvalidResourceResult()
+	}
+
+	client, err := getSQSClient(ctx)
+	if err != nil {
+		return action.ActionResult{Success: false, Error: err}
+	}
+
+	sourceArn := queue.GetARN()
+
+	output, err := client.StartMessageMoveTask(ctx, &sqs.StartMessageMoveTaskInput{
+		SourceArn: &sourceArn,
+	})
+	if err != nil {
+		return action.ActionResult{Success: false, Error: fmt.Errorf("start message move task: %w", err)}
+	}
+
+	return action.ActionResult{
+		Success: true,
+		Message: fmt.Sprintf("Started redrive of %s to source queue(s) (task: %s)", queue.GetName(), appaws.Str(output.TaskHandle)),
+	}
+}
+
+func executeRedriveStatus(ctx context.Context, resource dao.Resource) action.ActionResult {
+	queue, ok := resource.(*QueueResource)
+	if !ok {
+		return action.InvalidResourceResult()
+	}
+
+	client, err := getSQSClient(ctx)
+	if err != nil {
+		return action.ActionResult{Success: false, Error: err}
+	}
+
+	tasks, err := listMoveTasks(ctx, client, queue.GetARN())
+	if err != nil {
+		return action.ActionResult{Success: false, Error: err}
+	}
+
+	return action.ActionResult{
+		Success: true,
+		Message: formatMoveTasks(queue.GetName(), tasks),
+	}
+}
+
+func executeCancelRedrive(ctx context.Context, resource dao.Resource) action.ActionResult {
+	queue, ok := resource.(*QueueResource)
+	if !ok {
+		return action.InvalidResourceResult()
+	}
+
+	client, err := getSQSClient(ctx)
+	if err != nil {
+		return action.ActionResult{Success: false, Error: err}
+	}
+
+	tasks, err := listMoveTasks(ctx, client, queue.GetARN())
+	if err != nil {
+		return action.ActionResult{Success: false, Error: err}
+	}
+
+	running := findRunningTask(tasks)
+	if running == nil {
+		return action.ActionResult{Success: true, Message: fmt.Sprintf("No running redrive for %s", queue.GetName())}
+	}
+
+	output, err := client.CancelMessageMoveTask(ctx, &sqs.CancelMessageMoveTaskInput{
+		TaskHandle: running.TaskHandle,
+	})
+	if err != nil {
+		return action.ActionResult{Success: false, Error: fmt.Errorf("cancel message move task: %w", err)}
+	}
+
+	return action.ActionResult{
+		Success: true,
+		Message: fmt.Sprintf("Cancelled redrive of %s (%d messages moved)", queue.GetName(), output.ApproximateNumberOfMessagesMoved),
+	}
+}
+
+func listMoveTasks(ctx context.Context, client *sqs.Client, sourceArn string) ([]types.ListMessageMoveTasksResultEntry, error) {
+	output, err := client.ListMessageMoveTasks(ctx, &sqs.ListMessageMoveTasksInput{
+		SourceArn:  &sourceArn,
+		MaxResults: aws.Int32(10),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list message move tasks: %w", err)
+	}
+
+	return output.Results, nil
+}
+
+func findRunningTask(tasks []types.ListMessageMoveTasksResultEntry) *types.ListMessageMoveTasksResultEntry {
+	for i := range tasks {
+		if appaws.Str(tasks[i].Status) == moveTaskStatusRunning && tasks[i].TaskHandle != nil {
+			return &tasks[i]
+		}
+	}
+	return nil
+}
+
+func formatMoveTasks(queueName string, tasks []types.ListMessageMoveTasksResultEntry) string {
+	if len(tasks) == 0 {
+		return fmt.Sprintf("No redrive tasks found for %s", queueName)
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Redrive tasks for %s:\n", queueName)
+
+	for _, task := range tasks {
+		progress := fmt.Sprintf("%d moved", task.ApproximateNumberOfMessagesMoved)
+		if task.ApproximateNumberOfMessagesToMove != nil {
+			progress = fmt.Sprintf("%d/%d moved", task.ApproximateNumberOfMessagesMoved, *task.ApproximateNumberOfMessagesToMove)
+		}
+
+		destination := "source queue(s)"
+		if task.DestinationArn != nil {
+			destination = queueNameFromArn(*task.DestinationArn)
+		}
+
+		started := time.UnixMilli(task.StartedTimestamp).Format("2006-01-02 15:04:05")
+
+		fmt.Fprintf(&sb, "\n%s  %s  started %s  -> %s",
+			sanitize.TerminalText(appaws.Str(task.Status)), progress, started, sanitize.TerminalText(destination))
+
+		if reason := appaws.Str(task.FailureReason); reason != "" {
+			fmt.Fprintf(&sb, "\n  failure: %s", sanitize.TerminalText(reason))
+		}
+	}
+
+	return sb.String()
 }

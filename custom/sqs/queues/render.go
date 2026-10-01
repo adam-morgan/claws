@@ -1,7 +1,6 @@
 package queues
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -23,7 +22,7 @@ func NewQueueRenderer() render.Renderer {
 			Service:  "sqs",
 			Resource: "queues",
 			Cols: []render.Column{
-				{Name: "NAME", Width: 40, Getter: func(r dao.Resource) string { return r.GetName() }, Priority: 0},
+				{Name: "NAME", Width: 60, Getter: func(r dao.Resource) string { return r.GetName() }, Priority: 0},
 				{Name: "TYPE", Width: 10, Getter: getType, Priority: 1},
 				{Name: "MESSAGES", Width: 10, Getter: getMessages, Priority: 2},
 				{Name: "IN FLIGHT", Width: 10, Getter: getInFlight, Priority: 3},
@@ -176,16 +175,19 @@ func (r *QueueRenderer) RenderDetail(resource dao.Resource) string {
 		}
 	}
 	// Dead Letter Queue
-	if redrive := q.RedrivePolicy(); redrive != "" {
-		var policy struct {
-			DeadLetterTargetArn string `json:"deadLetterTargetArn"`
-			MaxReceiveCount     int    `json:"maxReceiveCount"`
+	if policy, ok := parseRedrivePolicy(q.RedrivePolicy()); ok {
+		d.Section("Dead Letter Queue")
+		d.Field("Target Queue", queueNameFromArn(policy.DeadLetterTargetArn))
+		d.Field("Max Receives", fmt.Sprintf("%d", policy.MaxReceiveCount))
+	}
+
+	if q.IsDLQ || q.RedriveAllowPolicy() != "" {
+		d.Section("Redrive")
+		if q.IsDLQ {
+			d.Field("Is Dead Letter Queue", "Yes")
 		}
-		if err := json.Unmarshal([]byte(redrive), &policy); err == nil {
-			d.Section("Dead Letter Queue")
-			parts := strings.Split(policy.DeadLetterTargetArn, ":")
-			d.Field("Target Queue", parts[len(parts)-1])
-			d.Field("Max Receives", fmt.Sprintf("%d", policy.MaxReceiveCount))
+		if allow := q.RedriveAllowPolicy(); allow != "" {
+			d.Field("Redrive Allow Policy", allow)
 		}
 	}
 
@@ -281,21 +283,55 @@ func (r *QueueRenderer) RenderSummary(resource dao.Resource) []render.SummaryFie
 	}
 
 	// DLQ
-	if redrive := q.RedrivePolicy(); redrive != "" {
-		var policy struct {
-			DeadLetterTargetArn string `json:"deadLetterTargetArn"`
-			MaxReceiveCount     int    `json:"maxReceiveCount"`
-		}
-		if err := json.Unmarshal([]byte(redrive), &policy); err == nil {
-			// Extract queue name from ARN
-			parts := strings.Split(policy.DeadLetterTargetArn, ":")
-			dlqName := parts[len(parts)-1]
-			fields = append(fields, render.SummaryField{
-				Label: "Dead Letter Queue",
-				Value: fmt.Sprintf("%s (max %d receives)", dlqName, policy.MaxReceiveCount),
-			})
-		}
+	if policy, ok := parseRedrivePolicy(q.RedrivePolicy()); ok {
+		fields = append(fields, render.SummaryField{
+			Label: "Dead Letter Queue",
+			Value: fmt.Sprintf("%s (max %d receives)", queueNameFromArn(policy.DeadLetterTargetArn), policy.MaxReceiveCount),
+		})
+	}
+
+	if q.IsDLQ {
+		fields = append(fields, render.SummaryField{Label: "Is DLQ", Value: "Yes"})
 	}
 
 	return fields
+}
+
+// Navigations returns available navigations from a queue
+func (r *QueueRenderer) Navigations(resource dao.Resource) []render.Navigation {
+	q, ok := resource.(*QueueResource)
+	if !ok {
+		return nil
+	}
+
+	var navs []render.Navigation
+
+	if q.IsDLQ {
+		navs = append(navs, render.Navigation{
+			Key:         "v",
+			Label:       "Messages",
+			Service:     "sqs",
+			Resource:    "messages",
+			FilterField: "QueueUrl",
+			FilterValue: q.URL,
+		})
+	}
+
+	if arn := q.DeadLetterTargetArn(); arn != "" {
+		navs = append(navs, render.Navigation{
+			Key:         "Q",
+			Label:       "DLQ",
+			Service:     "sqs",
+			Resource:    "queues",
+			FilterField: "QueueName",
+			FilterValue: queueNameFromArn(arn),
+		})
+	}
+
+	return navs
+}
+
+func queueNameFromArn(arn string) string {
+	parts := strings.Split(arn, ":")
+	return parts[len(parts)-1]
 }

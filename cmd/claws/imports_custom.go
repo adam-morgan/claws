@@ -288,6 +288,7 @@ import (
 	_ "github.com/clawscli/claws/custom/sns/topics"
 
 	// SQS
+	_ "github.com/clawscli/claws/custom/sqs/messages"
 	_ "github.com/clawscli/claws/custom/sqs/queues"
 
 	// Systems Manager

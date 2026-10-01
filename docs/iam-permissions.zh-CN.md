@@ -61,6 +61,8 @@ AI 聊天功能（`A` 键）使用 Amazon Bedrock。要启用此功能，需要�
 | 启动/停止 EC2 | `ec2:StartInstances`、`ec2:StopInstances` |
 | 删除资源 | `<service>:Delete*` |
 | SSO 登录 | `sso:*`（用于 SSO 配置文件） |
+| 查看 SQS 消息（DLQ） | `sqs:ReceiveMessage`, `sqs:ListDeadLetterSourceQueues` |
+| SQS DLQ 重新驱动 | `sqs:StartMessageMoveTask`, `sqs:ListMessageMoveTasks`, `sqs:CancelMessageMoveTask` |
 
 ## 推荐策略
 

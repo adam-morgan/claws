@@ -81,7 +81,7 @@ claws supports **70 services** with **175 resources**.
 
 | Service | Resources |
 |---------|-----------|
-| SQS | Queues |
+| SQS | Queues, Messages (DLQ) |
 | SNS | Topics, Subscriptions |
 | EventBridge | Event Buses, Rules |
 | Step Functions | State Machines, Executions |

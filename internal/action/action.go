@@ -170,6 +170,8 @@ var ReadOnlyAllowlist = map[string]bool{
 	"ViewSecretValue": true,
 	// DescribeSecret: Reads and displays Secrets Manager metadata only
 	"DescribeSecret": true,
+	// ListMessageMoveTasks: Reads and displays SQS redrive task status only
+	"ListMessageMoveTasks": true,
 }
 
 var ReadOnlyExecAllowlist = map[string]bool{

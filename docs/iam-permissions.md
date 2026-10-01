@@ -61,6 +61,8 @@ Some resource actions require additional permissions:
 | Start/Stop EC2 | `ec2:StartInstances`, `ec2:StopInstances` |
 | Delete resources | `<service>:Delete*` |
 | SSO Login | `sso:*` (for SSO profiles) |
+| View SQS messages (DLQ) | `sqs:ReceiveMessage`, `sqs:ListDeadLetterSourceQueues` |
+| SQS DLQ redrive | `sqs:StartMessageMoveTask`, `sqs:ListMessageMoveTasks`, `sqs:CancelMessageMoveTask` |
 
 ## Recommended Policy
 

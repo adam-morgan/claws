@@ -81,7 +81,7 @@ clawsは **70サービス**、**175リソース** に対応しています。
 
 | Service | Resources |
 |---------|-----------|
-| SQS | Queues |
+| SQS | Queues, Messages (DLQ) |
 | SNS | Topics, Subscriptions |
 | EventBridge | Event Buses, Rules |
 | Step Functions | State Machines, Executions |

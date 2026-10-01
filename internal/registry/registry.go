@@ -572,6 +572,7 @@ var defaultResources = map[string]string{
 	"sagemaker":         "endpoints",
 	"service-quotas":    "services",
 	"sns":               "topics",
+	"sqs":               "queues",
 	"stepfunctions":     "state-machines",
 	"transfer":          "servers",
 	"vpc":               "vpcs",
@@ -661,6 +662,7 @@ var subResourceSet = map[string]struct{}{
 	"eks/addons":                       {},
 	"eks/access-entries":               {},
 	"redshift/snapshots":               {},
+	"sqs/messages":                     {},
 }
 
 // isSubResource returns true if the resource is only accessible via navigation

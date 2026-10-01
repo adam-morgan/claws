@@ -616,6 +616,7 @@ func TestReadOnlyAllowlist(t *testing.T) {
 	expected := []string{
 		"DetectStackDrift",     // CloudFormation: read-only drift detection
 		"InvokeFunctionDryRun", // Lambda: validation only
+		"ListMessageMoveTasks", // SQS: redrive status only
 	}
 
 	for _, op := range expected {
@@ -630,6 +631,8 @@ func TestReadOnlyAllowlist(t *testing.T) {
 		"StopInstances",
 		"TerminateInstances",
 		"InvokeFunction",
+		"StartMessageMoveTask",
+		"CancelMessageMoveTask",
 	}
 
 	for _, op := range dangerous {

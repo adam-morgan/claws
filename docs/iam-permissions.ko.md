@@ -61,6 +61,8 @@ AI 채팅 기능(`A` 키)은 Amazon Bedrock을 사용합니다. 이 기능을 �
 | EC2 시작/중지 | `ec2:StartInstances`, `ec2:StopInstances` |
 | 리소스 삭제 | `<service>:Delete*` |
 | SSO 로그인 | `sso:*` (SSO 프로필용) |
+| SQS 메시지 보기 (DLQ) | `sqs:ReceiveMessage`, `sqs:ListDeadLetterSourceQueues` |
+| SQS DLQ 리드라이브 | `sqs:StartMessageMoveTask`, `sqs:ListMessageMoveTasks`, `sqs:CancelMessageMoveTask` |
 
 ## 권장 정책
 

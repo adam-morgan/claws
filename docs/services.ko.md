@@ -81,7 +81,7 @@ claws는 **70개 서비스**와 **175개 리소스**를 지원합니다.
 
 | Service | Resources |
 |---------|-----------|
-| SQS | Queues |
+| SQS | Queues, Messages (DLQ) |
 | SNS | Topics, Subscriptions |
 | EventBridge | Event Buses, Rules |
 | Step Functions | State Machines, Executions |

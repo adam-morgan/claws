@@ -2,8 +2,10 @@ package queues
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 
@@ -32,6 +34,15 @@ func NewQueueDAO(ctx context.Context) (dao.DAO, error) {
 }
 
 func (d *QueueDAO) List(ctx context.Context) ([]dao.Resource, error) {
+	if name := dao.GetFilterFromContext(ctx, "QueueName"); name != "" {
+		queue, err := d.Get(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+
+		return []dao.Resource{queue}, nil
+	}
+
 	queueUrls, err := appaws.Paginate(ctx, func(token *string) ([]string, *string, error) {
 		output, err := d.client.ListQueues(ctx, &sqs.ListQueuesInput{
 			NextToken: token,
@@ -60,7 +71,29 @@ func (d *QueueDAO) List(ctx context.Context) ([]dao.Resource, error) {
 		}
 		resources = append(resources, NewQueueResource(queueUrl, attrsOutput.Attributes))
 	}
+
+	markDLQs(resources)
+
 	return resources, nil
+}
+
+func markDLQs(resources []dao.Resource) {
+	targets := make(map[string]struct{})
+	for _, r := range resources {
+		if q, ok := r.(*QueueResource); ok {
+			if arn := q.DeadLetterTargetArn(); arn != "" {
+				targets[arn] = struct{}{}
+			}
+		}
+	}
+
+	for _, r := range resources {
+		if q, ok := r.(*QueueResource); ok {
+			if _, isTarget := targets[q.GetARN()]; isTarget {
+				q.IsDLQ = true
+			}
+		}
+	}
 }
 
 func (d *QueueDAO) Get(ctx context.Context, id string) (dao.Resource, error) {
@@ -90,7 +123,19 @@ func (d *QueueDAO) Get(ctx context.Context, id string) (dao.Resource, error) {
 		return nil, apperrors.Wrapf(err, "get queue attributes %s", id)
 	}
 
-	return NewQueueResource(queueUrl, output.Attributes), nil
+	queue := NewQueueResource(queueUrl, output.Attributes)
+
+	sources, err := d.client.ListDeadLetterSourceQueues(ctx, &sqs.ListDeadLetterSourceQueuesInput{
+		QueueUrl:   &queueUrl,
+		MaxResults: aws.Int32(1),
+	})
+	if err != nil {
+		log.Warn("failed to list dead letter source queues", "queueUrl", queueUrl, "error", err)
+	} else {
+		queue.IsDLQ = len(sources.QueueUrls) > 0
+	}
+
+	return queue, nil
 }
 
 func (d *QueueDAO) Delete(ctx context.Context, id string) error {
@@ -132,6 +177,7 @@ type QueueResource struct {
 	dao.BaseResource
 	URL        string
 	Attributes map[string]string
+	IsDLQ      bool
 }
 
 // NewQueueResource creates a new QueueResource
@@ -241,10 +287,35 @@ func (r *QueueResource) RedrivePolicy() string {
 	return ""
 }
 
+// RedriveAllowPolicy returns the policy controlling which source queues may use this queue as a DLQ
+func (r *QueueResource) RedriveAllowPolicy() string {
+	return r.Attributes["RedriveAllowPolicy"]
+}
+
 // DeadLetterTargetArn returns the DLQ ARN if configured
 func (r *QueueResource) DeadLetterTargetArn() string {
-	if v, ok := r.Attributes["DeadLetterTargetArn"]; ok {
-		return v
+	policy, ok := parseRedrivePolicy(r.RedrivePolicy())
+	if !ok {
+		return ""
 	}
-	return ""
+
+	return policy.DeadLetterTargetArn
+}
+
+type redrivePolicy struct {
+	DeadLetterTargetArn string `json:"deadLetterTargetArn"`
+	MaxReceiveCount     int    `json:"maxReceiveCount"`
+}
+
+func parseRedrivePolicy(raw string) (redrivePolicy, bool) {
+	var policy redrivePolicy
+	if raw == "" {
+		return policy, false
+	}
+
+	if err := json.Unmarshal([]byte(raw), &policy); err != nil {
+		return policy, false
+	}
+
+	return policy, policy.DeadLetterTargetArn != ""
 }

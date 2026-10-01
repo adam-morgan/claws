@@ -61,6 +61,8 @@ AIチャット機能（`A`キー）はAmazon Bedrockを使用します。この�
 | EC2の起動/停止 | `ec2:StartInstances`, `ec2:StopInstances` |
 | リソースの削除 | `<service>:Delete*` |
 | SSOログイン | `sso:*`（SSOプロファイル用） |
+| SQSメッセージの表示（DLQ） | `sqs:ReceiveMessage`, `sqs:ListDeadLetterSourceQueues` |
+| SQS DLQリドライブ | `sqs:StartMessageMoveTask`, `sqs:ListMessageMoveTasks`, `sqs:CancelMessageMoveTask` |
 
 ## 推奨ポリシー
 

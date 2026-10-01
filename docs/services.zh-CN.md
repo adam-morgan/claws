@@ -81,7 +81,7 @@ claws 支持 **70 个服务**和 **175 个资源**。
 
 | Service | Resources |
 |---------|-----------|
-| SQS | Queues |
+| SQS | Queues, Messages (DLQ) |
 | SNS | Topics, Subscriptions |
 | EventBridge | Event Buses, Rules |
 | Step Functions | State Machines, Executions |

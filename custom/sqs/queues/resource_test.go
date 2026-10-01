@@ -86,6 +86,7 @@ func TestQueueResource_MissingAttributes(t *testing.T) {
 		{"MessageRetentionPeriod", resource.MessageRetentionPeriod(), ""},
 		{"RedrivePolicy", resource.RedrivePolicy(), ""},
 		{"DeadLetterTargetArn", resource.DeadLetterTargetArn(), ""},
+		{"RedriveAllowPolicy", resource.RedriveAllowPolicy(), ""},
 	}
 
 	for _, tt := range tests {

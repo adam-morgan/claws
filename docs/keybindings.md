@@ -84,7 +84,7 @@ These shortcuts navigate to related resources based on the current context:
 
 | Key | Action |
 |-----|--------|
-| `v` | View VPC / Versions |
+| `v` | View VPC / Versions / SQS Messages (DLQ) |
 | `s` | View Subnets / Streams / Stages |
 | `g` | View Security Groups |
 | `r` | View Route Tables / Roles / Resources |
@@ -93,6 +93,7 @@ These shortcuts navigate to related resources based on the current context:
 | `o` | View Outputs / Operations |
 | `i` | View Images / Indexes |
 | `D` | View Data Sources (AppSync) / Task Definitions (ECS) |
+| `Q` | View Dead Letter Queue (SQS) |
 
 ## Region Selector (`R` key)
 
