@@ -377,7 +377,31 @@ func (s *ServiceBrowser) updateViewport() {
 	}
 
 	s.vp.Model.SetContent(strings.Join(lines, "\n"))
-	s.vp.Model.GotoTop()
+	s.scrollToCursor()
+}
+
+func (s *ServiceBrowser) scrollToCursor() {
+	if s.cursor == 0 {
+		s.vp.Model.GotoTop()
+		return
+	}
+
+	for _, pos := range s.itemPositions {
+		if pos.itemIdx != s.cursor {
+			continue
+		}
+
+		top := s.vp.Model.YOffset()
+		height := s.vp.Model.Height()
+
+		if pos.startLine < top {
+			s.vp.Model.SetYOffset(pos.startLine)
+		} else if pos.endLine > top+height {
+			s.vp.Model.SetYOffset(pos.endLine - height)
+		}
+
+		return
+	}
 }
 
 func (s *ServiceBrowser) moveToNextCategory() {

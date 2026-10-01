@@ -199,3 +199,52 @@ func TestServiceBrowserMouseWheel(t *testing.T) {
 
 	// Should not panic
 }
+
+func TestServiceBrowserScrollFollowsCursor(t *testing.T) {
+	reg := registry.New()
+	for _, svc := range []string{"ec2", "s3", "ecr", "glue", "vpc", "iam", "sqs", "codebuild", "cloudwatch", "backup", "ce", "gamelift"} {
+		reg.RegisterCustom(svc, "items", registry.Entry{})
+	}
+
+	browser := NewServiceBrowser(context.Background(), reg)
+	browser.Update(browser.Init()())
+	browser.SetSize(100, 12)
+	browser.updateViewport()
+
+	cursorVisible := func() bool {
+		top := browser.vp.Model.YOffset()
+		bottom := top + browser.vp.Model.Height()
+
+		for _, pos := range browser.itemPositions {
+			if pos.itemIdx == browser.cursor {
+				return pos.startLine >= top && pos.endLine <= bottom
+			}
+		}
+
+		return false
+	}
+
+	for browser.cursor < len(browser.flatItems)-1 {
+		browser.Update(tea.KeyPressMsg{Code: 'j'})
+
+		if !cursorVisible() {
+			t.Fatalf("cursor %d not visible after 'j' (YOffset=%d)", browser.cursor, browser.vp.Model.YOffset())
+		}
+	}
+
+	if browser.vp.Model.YOffset() == 0 {
+		t.Fatal("viewport did not scroll")
+	}
+
+	for browser.cursor > 0 {
+		browser.Update(tea.KeyPressMsg{Code: 'k'})
+
+		if !cursorVisible() {
+			t.Fatalf("cursor %d not visible after 'k' (YOffset=%d)", browser.cursor, browser.vp.Model.YOffset())
+		}
+	}
+
+	if got := browser.vp.Model.YOffset(); got != 0 {
+		t.Errorf("YOffset at first item = %d, want 0", got)
+	}
+}
