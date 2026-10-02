@@ -588,11 +588,10 @@ func (a *App) delegateToCurrentView(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, cmd
 }
 
-// newAltScreenView creates a View with AltScreen and mouse support enabled
 func newAltScreenView(content string) tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeAllMotion // AllMotion for hover tracking
+	v.MouseMode = tea.MouseModeNone
 	return v
 }
 
