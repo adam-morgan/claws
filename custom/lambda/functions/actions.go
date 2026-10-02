@@ -10,7 +10,6 @@ import (
 	lambdaClient "github.com/clawscli/claws/custom/lambda"
 	"github.com/clawscli/claws/internal/action"
 	"github.com/clawscli/claws/internal/dao"
-	"github.com/clawscli/claws/internal/sanitize"
 )
 
 func init() {
@@ -84,10 +83,12 @@ func executeInvoke(ctx context.Context, resource dao.Resource, dryRun bool) acti
 	if dryRun {
 		input.InvocationType = lambdatypes.InvocationTypeDryRun
 	} else {
-		input.InvocationType = lambdatypes.InvocationTypeRequestResponse
+		input.InvocationType = lambdatypes.InvocationTypeEvent
 	}
 
-	output, err := client.Invoke(ctx, input)
+	output, err := client.Invoke(ctx, input, func(o *lambda.Options) {
+		o.RetryMaxAttempts = 1
+	})
 	if err != nil {
 		return action.FailResultf(err, "invoke function %s", functionName)
 	}
@@ -96,26 +97,7 @@ func executeInvoke(ctx context.Context, resource dao.Resource, dryRun bool) acti
 		return action.SuccessResult(fmt.Sprintf("Dry run successful for %s (Status: %d)", functionName, output.StatusCode))
 	}
 
-	statusCode := output.StatusCode
-	responsePreview := lambdaPayloadPreview(output.Payload)
-
-	// Check for function error
-	if output.FunctionError != nil && *output.FunctionError != "" {
-		return action.FailResult(fmt.Errorf("function error: %s - %s", *output.FunctionError, responsePreview))
-	}
-
-	return action.SuccessResult(fmt.Sprintf("Invoked %s (Status: %d) Response: %s", functionName, statusCode, responsePreview))
-}
-
-func lambdaPayloadPreview(payload []byte) string {
-	if len(payload) == 0 {
-		return ""
-	}
-	preview := string(payload)
-	if len(preview) > 100 {
-		preview = preview[:100] + "..."
-	}
-	return sanitize.SensitiveText(preview)
+	return action.SuccessResult(fmt.Sprintf("Invoked %s asynchronously (Status: %d)", functionName, output.StatusCode))
 }
 
 func executeDeleteFunction(ctx context.Context, resource dao.Resource) action.ActionResult {

@@ -64,6 +64,7 @@ type ActionMenu struct {
 	cursor         int
 	result         *action.ActionResult
 	confirming     bool
+	running        bool
 	confirmIdx     int
 	lastExecAction *action.Action
 	styles         actionMenuStyles
@@ -125,6 +126,17 @@ func (m *ActionMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case apiResultMsg:
+		m.running = false
+		m.result = &msg.result
+
+		if msg.result.FollowUpMsg != nil {
+			log.Debug("action has follow-up message", "msgType", fmt.Sprintf("%T", msg.result.FollowUpMsg))
+			return m, func() tea.Msg { return msg.result.FollowUpMsg }
+		}
+
+		return m, nil
+
 	case ThemeChangedMsg:
 		m.styles = newActionMenuStyles()
 		return m, nil
@@ -147,6 +159,10 @@ func (m *ActionMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		if m.running {
+			return m, nil
+		}
+
 		if m.dangerous.active {
 			switch msg.String() {
 			case "enter":
@@ -280,13 +296,18 @@ func (m *ActionMenu) executeAction(act action.Action) (tea.Model, tea.Cmd) {
 		})
 	}
 
-	result := action.ExecuteWithDAO(m.ctx, act, m.resource, m.service, m.resType)
-	m.result = &result
-	if result.FollowUpMsg != nil {
-		log.Debug("action has follow-up message", "action", act.Name, "msgType", fmt.Sprintf("%T", result.FollowUpMsg))
-		return m, func() tea.Msg { return result.FollowUpMsg }
+	m.running = true
+	m.result = nil
+
+	ctx, resource, service, resType := m.ctx, m.resource, m.service, m.resType
+
+	return m, func() tea.Msg {
+		return apiResultMsg{result: action.ExecuteWithDAO(ctx, act, resource, service, resType)}
 	}
-	return m, nil
+}
+
+type apiResultMsg struct {
+	result action.ActionResult
 }
 
 // execResultMsg is sent when an exec action completes
@@ -330,6 +351,8 @@ func (m *ActionMenu) ViewString() string {
 		confirmContent += "Press " + s.yes.Render("[Y]") + " to confirm or " + s.no.Render("[N]") + " to cancel"
 
 		out += s.box.Render(confirmContent)
+	} else if m.running && m.cursor < len(m.actions) {
+		out += "\n" + ui.DimStyle().Render(fmt.Sprintf("Running '%s'...", m.actions[m.cursor].Name))
 	} else if m.result != nil {
 		out += "\n"
 		if m.result.Success {
@@ -341,7 +364,7 @@ func (m *ActionMenu) ViewString() string {
 		}
 	}
 
-	if !m.confirming && !m.dangerous.active {
+	if !m.confirming && !m.dangerous.active && !m.running {
 		out += "\n\n" + ui.DimStyle().Render("Press shortcut key or Enter to execute, Esc to cancel")
 	}
 

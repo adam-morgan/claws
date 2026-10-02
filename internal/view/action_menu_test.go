@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/clawscli/claws/internal/action"
+	"github.com/clawscli/claws/internal/dao"
 )
 
 func TestActionMenuMouseHover(t *testing.T) {
@@ -249,5 +250,49 @@ func TestActionMenuDangerousStatusLineFullToken(t *testing.T) {
 
 	if got, want := menu.StatusLine(), "Type full confirmation token"; got != want {
 		t.Errorf("StatusLine() = %q, want %q", got, want)
+	}
+}
+
+func TestActionMenuAPIActionRunsAsyncAndIgnoresKeysWhileRunning(t *testing.T) {
+	executions := 0
+	action.Global.Register("asynctest", "items", []action.Action{
+		{Name: "Invoke", Shortcut: "i", Type: action.ActionTypeAPI, Operation: "Invoke", Confirm: action.ConfirmSimple},
+	})
+	action.RegisterExecutor("asynctest", "items", func(ctx context.Context, act action.Action, r dao.Resource) action.ActionResult {
+		executions++
+		return action.SuccessResult("done")
+	})
+
+	menu := NewActionMenu(context.Background(), &mockResource{id: "fn", name: "fn"}, "asynctest", "items")
+
+	menu.Update(tea.KeyPressMsg{Text: "i", Code: 'i'})
+	_, cmd := menu.Update(tea.KeyPressMsg{Text: "Y", Code: 'Y'})
+
+	if !menu.running {
+		t.Fatal("expected menu to be running after confirm")
+	}
+
+	if cmd == nil {
+		t.Fatal("expected a command to execute the action")
+	}
+
+	if executions != 0 {
+		t.Fatalf("action executed synchronously in Update, executions = %d", executions)
+	}
+
+	for _, key := range []string{"Y", "i", "Y"} {
+		if _, extra := menu.Update(tea.KeyPressMsg{Text: key, Code: rune(key[0])}); extra != nil {
+			t.Fatalf("key %q produced a command while running", key)
+		}
+	}
+
+	menu.Update(cmd())
+
+	if executions != 1 {
+		t.Errorf("executions = %d, want 1", executions)
+	}
+
+	if menu.running || menu.result == nil || !menu.result.Success {
+		t.Errorf("expected successful result after completion, running=%v result=%+v", menu.running, menu.result)
 	}
 }
