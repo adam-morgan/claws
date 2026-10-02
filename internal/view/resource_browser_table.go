@@ -1,6 +1,7 @@
 package view
 
 import (
+	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
 
 	"github.com/clawscli/claws/internal/config"
@@ -14,6 +15,7 @@ const (
 	profileColWidth = 16
 	accountColWidth = 14
 	regionColWidth  = 14
+	columnGap       = 1
 )
 
 func (r *ResourceBrowser) Cursor() int {
@@ -95,7 +97,17 @@ func (r *ResourceBrowser) buildTable() {
 	}
 	r.tc.SetTableHeight(tableHeight)
 
-	widths := r.calculateColumnWidths(cols, isMultiProfile, isMultiRegion, effectiveMetricsEnabled, numCols)
+	rows := make([][]string, len(r.filtered))
+	firstColContentWidth := lipgloss.Width(headers[1])
+	for i, res := range r.filtered {
+		rows[i] = r.renderer.RenderRow(dao.UnwrapResource(res), cols)
+
+		if len(rows[i]) > 0 {
+			firstColContentWidth = max(firstColContentWidth, lipgloss.Width(rows[i][0]))
+		}
+	}
+
+	widths := r.calculateColumnWidths(cols, isMultiProfile, isMultiRegion, effectiveMetricsEnabled, numCols, firstColContentWidth)
 
 	t := table.New().
 		Headers(headers...).
@@ -111,8 +123,8 @@ func (r *ResourceBrowser) buildTable() {
 		BorderStyle(TableBorderStyle()).
 		StyleFunc(NewTableStyleFunc(widths, cursor))
 
-	for _, res := range r.filtered {
-		row := r.renderer.RenderRow(dao.UnwrapResource(res), cols)
+	for i, res := range r.filtered {
+		row := rows[i]
 		mark := " "
 		if r.markedResource != nil && r.markedResource.GetID() == res.GetID() {
 			mark = "◆"
@@ -155,7 +167,7 @@ func (r *ResourceBrowser) buildTable() {
 	r.tableContent = t.String()
 }
 
-func (r *ResourceBrowser) calculateColumnWidths(cols []render.Column, isMultiProfile, isMultiRegion, hasMetrics bool, numCols int) []int {
+func (r *ResourceBrowser) calculateColumnWidths(cols []render.Column, isMultiProfile, isMultiRegion, hasMetrics bool, numCols, firstColContentWidth int) []int {
 	metricsColWidth := metrics.ColumnWidth
 
 	totalColWidth := markColWidth
@@ -176,6 +188,9 @@ func (r *ResourceBrowser) calculateColumnWidths(cols []render.Column, isMultiPro
 		extraWidth = 0
 	}
 
+	firstColGrowth := min(extraWidth, max(0, firstColContentWidth+columnGap-cols[0].Width))
+	extraWidth -= firstColGrowth
+
 	hasTrailingCols := isMultiProfile || isMultiRegion || hasMetrics
 	widths := make([]int, numCols)
 	widths[0] = markColWidth
@@ -183,6 +198,10 @@ func (r *ResourceBrowser) calculateColumnWidths(cols []render.Column, isMultiPro
 	colIdx := 1
 	for i, col := range cols {
 		w := col.Width
+		if i == 0 {
+			w += firstColGrowth
+		}
+
 		if i == len(cols)-1 && !hasTrailingCols {
 			w += extraWidth
 		}
